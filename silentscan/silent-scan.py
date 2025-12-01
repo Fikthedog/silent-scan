@@ -36,11 +36,6 @@ logo = f"""
 Passive Network Scanner — Ethical & Stealth
 """
 
-# Fake vendor list for cosmetics
-def get_mac_vendor(mac):
-    vendors = ["Cisco", "TP-Link", "Apple", "Intel", "Netgear", "Ubiquiti", "Unknown"]
-    return random.choice(vendors)
-
 # Parse ARP table for real hosts
 def get_real_hosts():
     hosts = []
