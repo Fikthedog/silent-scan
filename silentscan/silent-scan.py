@@ -1,88 +1,138 @@
 #!/usr/bin/env python3
-# SILENT-SCAN: Passive Network Scanner — Real Devices Only
 
-import time
-import sys
-import json
 import subprocess
-import random
+import os
+import time
+import json
+import socket
+from datetime import datetime
 
-# Safe fallback if colorama isn't installed
-try:
-    from colorama import Fore, Style, init
-    init(autoreset=True)
-except:
-    class Fore:
-        RED = ''
-        GREEN = ''
-        BLUE = ''
-        YELLOW = ''
-        CYAN = ''
-        MAGENTA = ''
-    class Style:
-        BRIGHT = ''
-        RESET_ALL = ''
-
-# CLEAN ASCII LOGO (Terminal-safe)
-logo = f"""
-{Fore.CYAN}{Style.BRIGHT}
-   ____  _ _            _      ____                           
-  / ___|| (_) ___ _ __ | |_   / ___|  ___ __ _ _ __           
-  \___ \| | |/ _ \ '_ \| __|  \___ \ / __/ _` | '_ \          
-   ___) | | |  __/ | | | |_    ___) | (_| (_| | | | |         
-  |____/|_|_|\___|_| |_|\__|  |____/ \___\__,_|_| |_|         
-            M A D E  B Y  F I K T H E D O G
-{Style.RESET_ALL}
-Passive Network Scanner — Ethical & Stealth
-"""
-
-# Parse ARP table for real hosts
-def get_real_hosts():
-    hosts = []
+# ---------------------------
+#  MAC Vendor Lookup
+# ---------------------------
+def lookup_mac_vendor(mac):
     try:
-        output = subprocess.check_output(['arp', '-a']).decode()
-        for line in output.splitlines():
-            parts = line.split()
-            if len(parts) >= 2:
-                ip = parts[1].strip("()")
-                mac = parts[3] if len(parts) >= 4 else "UNKNOWN"
-                hosts.append({
-                    "ip": ip,
-                    "mac": mac,
-                    "vendor": get_mac_vendor(mac)
-                })
-    except Exception as e:
-        print(f"{Fore.RED}[!] Error reading ARP table: {e}")
-    return hosts
+        import requests
+        url = f"https://api.macvendors.com/{mac}"
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return r.text.strip()
+    except:
+        pass
+    return "Unknown Vendor"
 
-# Fancy animation (visual only)
-def scan_animation(ip):
-    for i in range(3):
-        sys.stdout.write(f"\rScanning {ip} {'.'*i}   ")
-        sys.stdout.flush()
-        time.sleep(0.4)
-    print(f"\r{Fore.GREEN}[+] Host detected: {ip}           ")
-
+# ---------------------------
+#  Silent Scan Tool
+# ---------------------------
 def silent_scan():
-    print(logo)
-    print(f"{Fore.YELLOW}Initializing passive scan...\n")
-    time.sleep(1)
+    print("\n=== Silent Scan ===")
+    output = subprocess.check_output(["arp", "-a"]).decode()
 
-    hosts = get_real_hosts()
-    if not hosts:
-        print(f"{Fore.RED}[!] No hosts found in ARP table.")
-        return
+    devices = []
+    for line in output.splitlines():
+        if "(" in line and ")" in line and " at " in line:
+            try:
+                name = line.split(" ")[0]
+                ip = line.split("(")[1].split(")")[0]
+                mac = line.split(" at ")[1].split(" ")[0]
 
-    for host in hosts:
-        scan_animation(host["ip"])
+                vendor = lookup_mac_vendor(mac)
 
-    # Save results
-    with open("silent_scan_results.json", "w") as f:
-        json.dump(hosts, f, indent=4)
+                devices.append((name, ip, mac, vendor))
+            except:
+                pass
 
-    print(f"\n{Fore.CYAN}{Style.BRIGHT}[✓] Scan complete.")
-    print(f"{Fore.CYAN}[i] Results saved to silent_scan_results.json")
-    print(f"[i] Total hosts detected: {len(hosts)}")
+    print("\nDiscovered Devices:")
+    for d in devices:
+        print(f"{d[0]:15}  {d[1]:16}  {d[2]:20}  {d[3]}")
+    print("")
 
+# ---------------------------
+#  Port Peek (SYN Scanner)
+# ---------------------------
+def port_peek():
+    import scapy.all as scapy
+    target = input("Target IP: ")
+
+    ports = [22, 80, 443, 8080, 3306, 53]
+    print("\nScanning...")
+
+    for port in ports:
+        pkt = scapy.IP(dst=target)/scapy.TCP(dport=port, flags="S")
+        resp = scapy.sr1(pkt, timeout=0.5, verbose=0)
+        if resp and resp.haslayer(scapy.TCP) and resp.getlayer(scapy.TCP).flags == 0x12:
+            print(f"OPEN → {port}")
+        else:
+            print(f"CLOSED → {port}")
+
+# ---------------------------
+#  Wi-fi Scan (macOS)
+# ---------------------------
+def wifi_scan():
+    print("\n=== Wi-Fi Scanner ===")
+    try:
+        airport = subprocess.check_output(
+            ["/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport", "-s"]
+        ).decode()
+        print(airport)
+    except:
+        print("Wi-Fi scan not supported on this system.")
+
+# ---------------------------
+#  Live Device Monitor
+# ---------------------------
+def live_monitor():
+    print("\nMonitoring devices (Ctrl+C to stop)…")
+    seen = set()
+
+    while True:
+        output = subprocess.check_output(["arp", "-a"]).decode()
+        for line in output.splitlines():
+            if "(" in line and ")" in line and " at " in line:
+                mac = line.split(" at ")[1].split(" ")[0]
+                if mac not in seen:
+                    seen.add(mac)
+                    print(f"[NEW DEVICE] {mac}  ({lookup_mac_vendor(mac)})")
+
+        time.sleep(5)
+
+# ---------------------------
+#  Main Menu
+# ---------------------------
+def main():
+    while True:
+        print("""
+╔════════════════════════════╗
+║        Silent Scan         ║
+║        Multi-Tool          ║
+╠════════════════════════════╣
+║ 1) Silent Scan             ║
+║ 2) Port Peek (SYN scan)    ║
+║ 3) Device Fingerprinter    ║
+║ 4) Wi-Fi Signal Mapper     ║
+║ 5) Live Device Monitor     ║
+║ 6) Exit                    ║
+╚════════════════════════════╝
+""")
+        choice = input("Select tool: ")
+
+        if choice == "1":
+            silent_scan()
+        elif choice == "2":
+            port_peek()
+        elif choice == "3":
+            device_fingerprinter()
+        elif choice == "4":
+            wifi_scan()
+        elif choice == "5":
+            live_monitor()
+        elif choice == "6":
+            break
+        else:
+            print("Invalid option.")
+
+# ---------------------------
+#  Entry
+# ---------------------------
 if __name__ == "__main__":
-    silent_scan()
+    main()
